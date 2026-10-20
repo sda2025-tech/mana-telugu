@@ -1,5 +1,6 @@
 export const CHAPTERS = [
   { id: "home", path: "#/", te: "ముఖచిత్రం", en: "Cover", num: "०" },
+  { id: "patha", path: "#/patha", te: "నేటి పాఠం", en: "Daily patha", num: "✦" },
   { id: "achulu", path: "#/achulu", te: "అచ్చులు", en: "Vowels", num: "౧" },
   { id: "hallulu", path: "#/hallulu", te: "హల్లులు", en: "Consonants", num: "౨" },
   { id: "guninthalu", path: "#/guninthalu", te: "గుణింతాలు", en: "Combinations", num: "౩" },

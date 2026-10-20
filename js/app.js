@@ -15,6 +15,19 @@ import {
   SAMETHALU,
 } from "./data.js";
 import { speak, stopSpeak, chant } from "./speech.js";
+import {
+  PATHALU,
+  pathaForDate,
+  pathaByNumber,
+  dateKey,
+  teNum,
+  captionFor,
+  loadStreak,
+  recordCompletion,
+  makeFindChoices,
+  paintStory,
+  downloadStory,
+} from "./patha.js";
 
 const app = document.querySelector("#app");
 const nav = document.querySelector("#chapter-nav");
@@ -101,7 +114,7 @@ function renderHome() {
   const total = ALL_LETTERS.length;
   const done = ALL_LETTERS.filter((l) => set.has(l.id)).length;
   const proverb = SAMETHALU[new Date().getDate() % SAMETHALU.length];
-  const today = ALL_LETTERS[new Date().getDate() % ALL_LETTERS.length];
+  const today = pathaForDate().focus;
   const chapters = CHAPTERS.filter((c) => c.id !== "home")
     .map(
       (c) => `<a class="chapter-card" href="${c.path}">
@@ -120,20 +133,20 @@ function renderHome() {
       <p class="subtitle">Mana Telugu</p>
       <p class="lead">Vowels, then consonants, then guninthalu — the Pedda Balasiksha path. Tap a letter to hear it.</p>
       <div class="cover-actions">
-        <a class="btn" href="#/achulu">పుస్తకం తెరువు · Open the book</a>
-        <a class="btn ghost" href="#/abhyasam">అభ్యాసం · Practice</a>
+        <a class="btn" href="#/patha">నేటి పాఠం · Today's patha</a>
+        <a class="btn ghost" href="#/achulu">పుస్తకం · Book</a>
       </div>
     </div>
     <p class="proverb">“${proverb.te}”<br><span style="color:var(--ink-soft);font-size:.95rem">${proverb.en}</span></p>
     <div class="progress" title="${done}/${total} letters marked learned"><span style="width:${Math.round((done / total) * 100)}%"></span></div>
     <p style="text-align:center;color:var(--ink-soft);margin-top:0">నేటి అక్షరం · today's letter
-      <button class="btn small ghost" data-speak="${today.speak}" type="button">${today.letter} — ${today.word}</button>
+      <a class="btn small ghost" href="#/patha">${today.letter} — ${today.word}</a>
     </p>
     <h2 style="font-family:var(--display);font-weight:400;margin:1.6rem 0 .8rem">పాఠములు · Lessons</h2>
     <div class="chapter-grid">${chapters}</div>
     <div class="note">
       <strong>ఎలా చదవాలి · How to use.</strong>
-      Ten quiet minutes a day is enough. Learn అచ్చులు first, with the picture word: ఆ for ఆవు. Then chant one varga of హల్లులు a week. Guninthalu come after the letters feel familiar. Chrome or Edge will speak Telugu when a Telugu voice is installed.
+      Play <a href="#/patha">నేటి పాఠం</a> first: hear, find, say — then stop. The book chapters are for looking up a letter. The Instagram card is the same patha, not a second curriculum. Chrome or Edge will speak Telugu when a Telugu voice is installed.
     </div>
   </div>`;
 }
@@ -395,6 +408,171 @@ function renderAbhyasam() {
   return quizView();
 }
 
+let pathaState = {
+  n: null,
+  round: "intro",
+  findChoices: null,
+  locked: false,
+  found: false,
+  autoSpeak: false,
+};
+
+function resolvePatha() {
+  const { param } = route();
+  if (param && /^\d+$/.test(param)) return pathaByNumber(param);
+  return pathaForDate();
+}
+
+function syncPathaState(patha) {
+  if (pathaState.n !== patha.n) {
+    pathaState = {
+      n: patha.n,
+      round: "intro",
+      findChoices: null,
+      locked: false,
+      found: false,
+      autoSpeak: false,
+    };
+  }
+}
+
+function roundPips(current) {
+  const order = ["hear", "find", "say"];
+  const labels = ["వినండి", "కనుగొనండి", "పలకండి"];
+  return `<ol class="round-pips">${order
+    .map((id, i) => {
+      const past = order.indexOf(current) > i || current === "done";
+      return `<li class="${current === id ? "current" : past ? "past" : ""}">${labels[i]}</li>`;
+    })
+    .join("")}</ol>`;
+}
+
+function storyBlock(patha) {
+  return `<div class="story-block">
+    <canvas id="story-canvas" class="story-preview" width="1080" height="1920" aria-label="Instagram story card"></canvas>
+    <p class="story-hint">This card is today's patha. Post it as-is — do not invent a second lesson for the feed.</p>
+    <textarea id="patha-caption" class="caption-box" readonly>${captionFor(patha)}</textarea>
+    <div class="cover-actions">
+      <button class="btn" data-patha="download" type="button">కార్డు దించుకోండి · Download story</button>
+      <button class="btn ghost" data-patha="copy" type="button">శీర్షిక కాపీ · Copy caption</button>
+    </div>
+  </div>`;
+}
+
+function renderPatha() {
+  const patha = resolvePatha();
+  syncPathaState(patha);
+  const f = patha.focus;
+  const streak = loadStreak();
+  const todayKey = dateKey();
+  const isToday = patha.n === pathaForDate().n;
+  const doneToday = isToday && streak.completed.includes(todayKey);
+  const groupLabel =
+    patha.group === "achulu" ? "అచ్చులు · vowels" : `${patha.varga?.te || "హల్లులు"} · consonants`;
+  const { param } = route();
+  const shareMode = param === "share";
+
+  if (shareMode || pathaState.round === "intro") {
+    return `<div class="wrap">
+      ${pageHead(
+        "నేటి పాఠం",
+        `పాఠం ${teNum(patha.n)} / ${teNum(PATHALU.length)} · ${groupLabel}. Three rounds, then stop.`,
+        `<a class="btn small ghost" href="#/patha/share">ఇన్‌స్టాగ్రామ్ కార్డు</a>`
+      )}
+      <div class="patha-hero">
+        <p class="streak">వరుస రోజులు · streak <strong>${streak.streak}</strong>${doneToday ? " · ఈరోజు పూర్తి" : ""}</p>
+        <p class="emoji" style="font-size:3.2rem;margin:0">${f.emoji}</p>
+        <p class="aksharam">${f.letter}</p>
+        <p class="word">${f.word}</p>
+        <p>${f.wordRoman} · ${f.meaning}</p>
+        <div class="cover-actions">
+          <button class="btn" data-patha="start" type="button">${doneToday ? "మళ్ళీ ఆడండి · Play again" : "మూడు రౌండ్లు · Start"}</button>
+          <button class="btn ghost" data-speak="${f.speak}" type="button">వినండి</button>
+        </div>
+      </div>
+      ${shareMode ? storyBlock(patha) : `<p style="text-align:center;margin:1.2rem 0 0"><a href="#/patha/share">Post this same patha to Instagram →</a></p>`}
+    </div>`;
+  }
+
+  if (pathaState.round === "hear") {
+    return `<div class="wrap">
+      ${pageHead("౧ · వినండి", "Hear the letter, then the picture word. Tap if you want it again.")}
+      ${roundPips("hear")}
+      <div class="patha-board">
+        <p class="emoji" style="font-size:3rem;margin:0">${f.emoji}</p>
+        <p class="aksharam">${f.letter}</p>
+        <p class="word">${f.word}</p>
+        <p>${f.wordRoman} · ${f.meaning}</p>
+        <div class="cover-actions">
+          <button class="btn ghost" data-speak="${f.speak}" type="button">మళ్ళీ వినండి · Again</button>
+          <button class="btn" data-patha="to-find" type="button">కనుగొనండి →</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  if (pathaState.round === "find") {
+    const choices = (pathaState.findChoices || [])
+      .map(
+        (c) =>
+          `<button type="button" class="patha-choice" data-patha-find="${c.id}">
+            <span class="ak">${c.letter}</span>
+          </button>`
+      )
+      .join("");
+    return `<div class="wrap">
+      ${pageHead("౨ · కనుగొనండి", "Which aksharam did you just hear?")}
+      ${roundPips("find")}
+      <div class="patha-board">
+        <p>విన్న అక్షరం ఏది? · tap the letter you heard</p>
+        <div class="patha-choices">${choices}</div>
+      </div>
+    </div>`;
+  }
+
+  if (pathaState.round === "say") {
+    return `<div class="wrap">
+      ${pageHead("౩ · పలకండి", "Say the picture word out loud, then hear the model.")}
+      ${roundPips("say")}
+      <div class="patha-board">
+        <p class="emoji" style="font-size:4.2rem;margin:0">${f.emoji}</p>
+        <p class="word">${f.word}</p>
+        <p>${f.wordRoman} · ${f.meaning}</p>
+        <p class="note">Look at the picture. Say <strong>${f.word}</strong>. Then tap to hear it.</p>
+        <div class="cover-actions">
+          <button class="btn ghost" data-speak="${f.word}" type="button">నమూనా · Model</button>
+          <button class="btn" data-patha="finish" type="button">పలికాను · I said it</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  return `<div class="wrap">
+    ${pageHead("చక్కగా ఉంది", `పాఠం ${teNum(patha.n)} is done. That is enough for today.`)}
+    ${roundPips("done")}
+    <div class="patha-board">
+      <p class="streak">వరుస రోజులు · streak <strong>${loadStreak().streak}</strong></p>
+      <p class="aksharam">${f.letter}</p>
+      <p class="word">${f.word}</p>
+      <div class="cover-actions">
+        <a class="btn" href="#/patha/share">ఇన్‌స్టాగ్రామ్‌కు పంపండి · Post this patha</a>
+        <a class="btn ghost" href="#/">ముఖచిత్రం</a>
+      </div>
+    </div>
+  </div>`;
+}
+
+function afterPathaRender() {
+  const canvas = document.querySelector("#story-canvas");
+  const patha = resolvePatha();
+  if (canvas) paintStory(canvas, patha);
+  if (pathaState.autoSpeak) {
+    pathaState.autoSpeak = false;
+    if (pathaState.round === "hear") speak(patha.focus.speak);
+    if (pathaState.round === "find") speak(patha.focus.letter);
+  }
+}
+
 function render() {
   stopSpeak();
   const { view, param } = route();
@@ -412,9 +590,11 @@ function render() {
   else if (view === "sankhyalu") html = renderSankhyalu();
   else if (view === "geyalu") html = renderGeyalu();
   else if (view === "abhyasam") html = renderAbhyasam();
+  else if (view === "patha") html = renderPatha();
   else html = renderHome();
   app.innerHTML = html;
   if (view === "vattulu") updateVattu(false);
+  if (view === "patha") afterPathaRender();
   window.scrollTo(0, 0);
 }
 
@@ -431,7 +611,7 @@ function updateVattu(play = true) {
 }
 
 app.addEventListener("click", async (e) => {
-  const t = e.target.closest("[data-speak],[data-chant],[data-open],[data-close],[data-learn],[data-g],[data-va],[data-vb],[data-choice],[data-quiz]");
+  const t = e.target.closest("[data-speak],[data-chant],[data-open],[data-close],[data-learn],[data-g],[data-va],[data-vb],[data-choice],[data-quiz],[data-patha],[data-patha-find]");
   if (!t) {
     if (e.target.closest(".trace-letter")) speak(e.target.closest(".trace-letter").dataset.speak);
     return;
@@ -480,6 +660,69 @@ app.addEventListener("click", async (e) => {
   if (t.dataset.quiz === "start") {
     quizState = { questions: makeQuiz(), i: 0, score: 0, locked: false };
     render();
+    return;
+  }
+  if (t.dataset.patha === "start") {
+    const patha = resolvePatha();
+    pathaState.findChoices = makeFindChoices(patha);
+    pathaState.found = false;
+    pathaState.locked = false;
+    pathaState.round = "hear";
+    pathaState.autoSpeak = true;
+    if (location.hash !== "#/patha" && !/^#\/patha\/\d+$/.test(location.hash)) {
+      location.hash = "#/patha";
+      return;
+    }
+    render();
+    return;
+  }
+  if (t.dataset.patha === "to-find") {
+    pathaState.round = "find";
+    pathaState.autoSpeak = true;
+    render();
+    return;
+  }
+  if (t.dataset.patha === "finish") {
+    if (resolvePatha().n === pathaForDate().n) recordCompletion(dateKey());
+    markLearned(resolvePatha().focus.id);
+    pathaState.round = "done";
+    render();
+    speak("చక్కగా ఉంది");
+    return;
+  }
+  if (t.dataset.patha === "download") {
+    const canvas = document.querySelector("#story-canvas");
+    downloadStory(canvas, resolvePatha());
+    return;
+  }
+  if (t.dataset.patha === "copy") {
+    const text = captionFor(resolvePatha());
+    navigator.clipboard?.writeText(text).then(() => {
+      t.textContent = "✓ copied";
+    });
+    return;
+  }
+  if (t.dataset.pathaFind) {
+    if (pathaState.locked) return;
+    pathaState.locked = true;
+    const patha = resolvePatha();
+    const ok = t.dataset.pathaFind === patha.focus.id;
+    t.classList.add(ok ? "correct" : "wrong");
+    if (!ok) {
+      const right = t.parentElement.querySelector(`[data-patha-find="${patha.focus.id}"]`);
+      if (right) right.classList.add("correct");
+    }
+    speak(ok ? "చక్కగా ఉంది" : patha.focus.letter);
+    setTimeout(() => {
+      pathaState.locked = false;
+      if (ok) {
+        pathaState.round = "say";
+        render();
+      } else {
+        pathaState.locked = false;
+        t.classList.remove("wrong");
+      }
+    }, 850);
     return;
   }
   if (t.dataset.choice) {
