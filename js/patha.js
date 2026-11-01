@@ -157,17 +157,13 @@ export async function paintStory(canvas, patha) {
   ctx.strokeRect(112, 134, w - 224, h - 268);
 
   ctx.textAlign = "center";
-  ctx.fillStyle = "#c45c18";
-  ctx.font = "600 34px 'Source Sans 3', sans-serif";
-  ctx.fillText("PEDDA BALASIKSHA", w / 2, 220);
-
   ctx.fillStyle = "#5c1010";
   ctx.font = "80px Suranna, 'Noto Serif Telugu', serif";
-  ctx.fillText("మన తెలుగు", w / 2, 330);
+  ctx.fillText("మన తెలుగు", w / 2, 280);
 
   ctx.fillStyle = "#8b1a1a";
   ctx.font = "40px 'Noto Sans Telugu', sans-serif";
-  ctx.fillText(`నేటి పాఠం  ${teNum(patha.n)} / ${teNum(PATHALU.length)}`, w / 2, 410);
+  ctx.fillText(`నేటి పాఠం  ${teNum(patha.n)} / ${teNum(PATHALU.length)}`, w / 2, 370);
 
   ctx.font = "140px sans-serif";
   ctx.fillText(patha.focus.emoji, w / 2, 600);
