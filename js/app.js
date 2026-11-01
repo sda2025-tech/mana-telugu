@@ -22,11 +22,14 @@ import {
   dateKey,
   teNum,
   captionFor,
+  lessonUrl,
+  audioUrl,
   loadStreak,
   recordCompletion,
   makeFindChoices,
   paintStory,
   downloadStory,
+  downloadStoryVideo,
 } from "./patha.js";
 
 const app = document.querySelector("#app");
@@ -450,12 +453,21 @@ function roundPips(current) {
 function storyBlock(patha) {
   return `<div class="story-block">
     <canvas id="story-canvas" class="story-preview" width="1080" height="1920" aria-label="Instagram story card"></canvas>
-    <p class="story-hint">This card is today's patha. Post it as-is — do not invent a second lesson for the feed.</p>
+    <p class="story-hint">A still cannot play Hear / Find / Say, play sound, or hold a tap target. Instagram only allows voice on video, and a click through a Stories link sticker.</p>
+    <ol class="story-steps">
+      <li>Download the <strong>video with voice</strong> and upload it as a Story or Reel. Chrome often saves WebM; if Instagram on iPhone rejects it, post the still instead — voice stays on the lesson page.</li>
+      <li>Copy the lesson link. In Stories, add a <strong>Link</strong> sticker and paste it.</li>
+      <li>Paste the caption. Feed URLs are not tappable — the sticker is the click.</li>
+    </ol>
     <textarea id="patha-caption" class="caption-box" readonly>${captionFor(patha)}</textarea>
     <div class="cover-actions">
-      <button class="btn" data-patha="download" type="button">కార్డు దించుకోండి · Download story</button>
+      <button class="btn" data-patha="video" type="button">వీడియో దించుకోండి · Download video with voice</button>
+      <button class="btn ghost" data-patha="download" type="button">కార్డు · Download still</button>
+      <button class="btn ghost" data-patha="copy-link" type="button">లింక్ కాపీ · Copy lesson link</button>
       <button class="btn ghost" data-patha="copy" type="button">శీర్షిక కాపీ · Copy caption</button>
+      <button class="btn ghost" data-patha="hear" type="button">వినండి · Play pronunciation</button>
     </div>
+    <p class="story-status" id="story-status" hidden></p>
   </div>`;
 }
 
@@ -693,6 +705,37 @@ app.addEventListener("click", async (e) => {
   if (t.dataset.patha === "download") {
     const canvas = document.querySelector("#story-canvas");
     downloadStory(canvas, resolvePatha());
+    return;
+  }
+  if (t.dataset.patha === "video") {
+    const status = document.querySelector("#story-status");
+    t.disabled = true;
+    if (status) {
+      status.hidden = false;
+      status.textContent = "Recording voice + card… keep this tab open.";
+    }
+    downloadStoryVideo(document.querySelector("#story-canvas"), resolvePatha())
+      .then(() => {
+        if (status) status.textContent = "Saved. Upload that file to a Story or Reel, then add a Link sticker.";
+      })
+      .catch((err) => {
+        if (status) status.textContent = err.message || "Could not record video in this browser.";
+      })
+      .finally(() => {
+        t.disabled = false;
+      });
+    return;
+  }
+  if (t.dataset.patha === "copy-link") {
+    navigator.clipboard?.writeText(lessonUrl(resolvePatha())).then(() => {
+      t.textContent = "✓ link copied";
+    });
+    return;
+  }
+  if (t.dataset.patha === "hear") {
+    stopSpeak();
+    const clip = new Audio(audioUrl(resolvePatha()));
+    clip.play();
     return;
   }
   if (t.dataset.patha === "copy") {

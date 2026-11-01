@@ -63,6 +63,29 @@ export function pathaByNumber(n) {
   return PATHALU[i];
 }
 
+export function lessonUrl(patha) {
+  const today = pathaForDate();
+  if (patha.n === today.n) return `${SITE_URL}#/patha`;
+  return `${SITE_URL}#/patha/${patha.n}`;
+}
+
+function audioSlug(id) {
+  const map = {
+    Ta: "tta",
+    Tha: "ttha",
+    Da: "dda",
+    Dha: "ddha",
+    Na: "nna",
+    La: "lla",
+    Sha: "ssha",
+  };
+  return map[id] || id;
+}
+
+export function audioUrl(patha) {
+  return `audio/${audioSlug(patha.focus.id)}.m4a`;
+}
+
 export function captionFor(patha) {
   const f = patha.focus;
   const group = patha.group === "achulu" ? "అచ్చులు · vowels" : `${patha.varga?.te || "హల్లులు"} · consonants`;
@@ -72,12 +95,11 @@ export function captionFor(patha) {
     `${f.wordRoman} · ${f.meaning}`,
     group,
     "",
-    "Hear it. Find it. Say it. Three rounds, then stop.",
+    "పాఠం వినండి · Play the lesson:",
+    lessonUrl(patha),
     "",
-    "మన తెలుగు · Pedda Balasiksha",
-    `${SITE_URL}#/patha`,
-    "",
-    "#ManaTelugu #PeddaBalasiksha #Telugu #తెలుగు",
+    "మన తెలుగు",
+    "#ManaTelugu #Telugu #తెలుగు",
   ].join("\n");
 }
 
@@ -180,15 +202,15 @@ export async function paintStory(canvas, patha) {
   ctx.fillText(`${patha.focus.wordRoman}  ·  ${patha.focus.meaning}`, w / 2, 1290);
 
   ctx.fillStyle = "#8b1a1a";
-  ctx.font = "40px 'Noto Sans Telugu', sans-serif";
-  ctx.fillText("వినండి  ·  కనుగొనండి  ·  పలకండి", w / 2, 1480);
+  ctx.font = "44px 'Noto Sans Telugu', sans-serif";
+  ctx.fillText("పాఠం వినండి", w / 2, 1480);
   ctx.font = "32px 'Source Sans 3', sans-serif";
   ctx.fillStyle = "#5a3a28";
-  ctx.fillText("Hear  ·  Find  ·  Say", w / 2, 1540);
+  ctx.fillText("Play the lesson", w / 2, 1540);
 
   ctx.fillStyle = "#8b1a1a";
   ctx.font = "32px 'Source Sans 3', sans-serif";
-  ctx.fillText("sda2025-tech.github.io/mana-telugu", w / 2, 1720);
+  ctx.fillText("sda2025-tech.github.io/mana-telugu", w / 2, 1620);
 }
 
 export async function downloadStory(canvas, patha) {
@@ -203,4 +225,107 @@ export async function downloadStory(canvas, patha) {
       resolve();
     }, "image/png");
   });
+}
+
+function pickRecorderMime() {
+  if (typeof MediaRecorder === "undefined") return "";
+  const types = [
+    "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+    "video/mp4",
+    "video/webm;codecs=vp9,opus",
+    "video/webm;codecs=vp8,opus",
+    "video/webm",
+  ];
+  return types.find((t) => MediaRecorder.isTypeSupported(t)) || "";
+}
+
+function waitForAudio(audio) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("Pronunciation file did not load.")), 8000);
+    const done = (err) => {
+      clearTimeout(timer);
+      if (err) reject(err);
+      else resolve();
+    };
+    audio.addEventListener("canplaythrough", () => done(), { once: true });
+    audio.addEventListener("error", () => done(new Error("Pronunciation file missing.")), { once: true });
+    if (audio.readyState >= 3) done();
+    else audio.load();
+  });
+}
+
+export async function downloadStoryVideo(canvas, patha) {
+  await paintStory(canvas, patha);
+  const mime = pickRecorderMime();
+  if (!mime) {
+    throw new Error("This browser cannot record video. Use Chrome on a computer, then upload the file to Instagram.");
+  }
+  if (typeof canvas.captureStream !== "function") {
+    throw new Error("This browser cannot capture the card as video.");
+  }
+
+  const audio = new Audio(audioUrl(patha));
+  audio.crossOrigin = "anonymous";
+  audio.preload = "auto";
+  await waitForAudio(audio);
+
+  const ac = new AudioContext();
+  if (ac.state === "suspended") await ac.resume();
+  const src = ac.createMediaElementSource(audio);
+  const dest = ac.createMediaStreamDestination();
+  src.connect(dest);
+  src.connect(ac.destination);
+  if (!dest.stream.getAudioTracks().length) {
+    await ac.close();
+    throw new Error("Could not attach pronunciation audio to the video.");
+  }
+
+  const frame = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height);
+  let raf = 0;
+  const keepAlive = () => {
+    canvas.getContext("2d").putImageData(frame, 0, 0);
+    raf = requestAnimationFrame(keepAlive);
+  };
+  keepAlive();
+
+  const canvasStream = canvas.captureStream(30);
+  const mixed = new MediaStream([...canvasStream.getVideoTracks(), ...dest.stream.getAudioTracks()]);
+  const rec = new MediaRecorder(mixed, { mimeType: mime, videoBitsPerSecond: 4_000_000 });
+  const chunks = [];
+  rec.ondataavailable = (e) => {
+    if (e.data && e.data.size) chunks.push(e.data);
+  };
+  const stopped = new Promise((resolve, reject) => {
+    rec.onstop = resolve;
+    rec.onerror = () => reject(new Error("Recording failed."));
+  });
+
+  rec.start(200);
+  try {
+    await audio.play();
+    await Promise.race([
+      new Promise((r) => {
+        audio.onended = r;
+      }),
+      new Promise((r) => setTimeout(r, Math.max(3000, (audio.duration || 4) * 1000 + 800))),
+    ]);
+    await new Promise((r) => setTimeout(r, 350));
+  } finally {
+    if (rec.state !== "inactive") rec.stop();
+  }
+  await stopped;
+  cancelAnimationFrame(raf);
+  canvasStream.getTracks().forEach((t) => t.stop());
+  dest.stream.getTracks().forEach((t) => t.stop());
+  audio.pause();
+  await ac.close();
+
+  if (!chunks.length) throw new Error("Recording produced an empty file.");
+  const ext = mime.includes("mp4") ? "mp4" : "webm";
+  const blob = new Blob(chunks, { type: mime.split(";")[0] });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `mana-telugu-patha-${patha.n}-${patha.focus.id}.${ext}`;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }

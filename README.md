@@ -4,7 +4,7 @@ Live site: **https://sda2025-tech.github.io/mana-telugu/**
 
 A Pedda Balasiksha-style primer for learning Telugu.
 
-**Start with [నేటి పాఠం](https://sda2025-tech.github.io/mana-telugu/#/patha)** — one letter a day, three rounds (hear, find, say), then stop. The Instagram story card and caption are generated from that same patha so the feed never invents a second curriculum.
+**Start with [నేటి పాఠం](https://sda2025-tech.github.io/mana-telugu/#/patha)** — one letter a day, three rounds (hear, find, say), then stop. Instagram stills cannot play sound or hold tap targets: download the voiced story video and add a Stories **link sticker** to the same patha.
 
 The book chapters remain: **అచ్చులు**, **హల్లులు**, **గుణింతాలు**, **ఒత్తులు**, words, sentences, numbers, rhymes, and extra practice.
 
